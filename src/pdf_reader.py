@@ -50,7 +50,7 @@ class PDFReader:
 
             # top left should be more populated
             h, w = img.shape[:2]
-            top_left = img[h // 50: h // 4, w // 20: w // 4]
+            top_left = img[h // 50 : h // 4, w // 20 : w // 4]
             if top_left.mean() > 250:
                 img = np.rot90(img, k=3)
 

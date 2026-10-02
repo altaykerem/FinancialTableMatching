@@ -3,8 +3,18 @@ import re
 _tr_not_regex = r"[^a-zığüşöç 0-9]"
 _tr_lower_table = str.maketrans("İI", "iı")
 _tr_months = [
-    "ocak", "şubat", "mart", "nisan", "mayıs", "haziran",
-    "temmuz", "ağustos", "eylül", "ekim", "kasım", "aralık",
+    "ocak",
+    "şubat",
+    "mart",
+    "nisan",
+    "mayıs",
+    "haziran",
+    "temmuz",
+    "ağustos",
+    "eylül",
+    "ekim",
+    "kasım",
+    "aralık",
 ]
 _tr_date_regex = r"(\d{1,2}) (" + "|".join(_tr_months) + r")(?: (\d{4}))?"
 
