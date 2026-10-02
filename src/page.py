@@ -26,7 +26,9 @@ class PageBuilder:
         for table_df in table_box_list:
             table_df, num_cols = self._cluster_columns(table_df)
             table_df, num_rows = self._merge_header_values(table_df, num_cols)
-            self.tables.append(self._build_table(table_df, num_cols, num_rows))
+            table = self._build_table(table_df, num_cols, num_rows)
+            if table is not None:
+                self.tables.append(table)
 
     def _add_lines(self, bbox_df):
         bbox_df["h"] = bbox_df.y1 - bbox_df.y0
@@ -181,18 +183,69 @@ class PageBuilder:
         if not x:
             return None
 
-        numeric = re.match(r"^\(?-?(\d{1,3}(?:\.\d{3})*)([,]\d+)?\)?$", x)
-        if not numeric:
+        # for searching split numbers
+        body = x.replace(" ", "").strip("()-")
+        if re.fullmatch(r"(19|20)\d{2}", body):
+            # a year is used in headers
             return x
 
-        value = int(numeric.group(1).replace(".", ""))
-        if numeric.group(2):
-            decimal = float("0." + numeric.group(2)[1:])
-            value = value + decimal
+        # dots are thousands separators, comma is the decimal separator
+        numeric = re.fullmatch(r"(\d{1,3}(?:\.\d{3})*|\d+)(,\d+)?", body)
+        if numeric and "." in numeric.group(1) and len(numeric.group(2) or "") == 4:
+            value = int(re.sub(r"[.,]", "", body))
+        elif numeric:
+            value = int(numeric.group(1).replace(".", ""))
+            if numeric.group(2):
+                value = value + float("0." + numeric.group(2)[1:])
+        elif re.fullmatch(r"\d+(?:[.,]+\d{3})+", body):
+            value = int(re.sub(r"[.,]", "", body))
+        else:
+            return x
 
         if x.startswith("(") or x.startswith("-"):
             value = -1 * value
         return value
+
+    @staticmethod
+    def is_number(x):
+        return isinstance(x, (int, float, np.number)) and not pd.isna(x)
+
+    def _merge_header_rows(self, df):
+        """Rows with text but no numbers in value columns are header lines"""
+        value_cols = range(1, df.shape[1] - 1)
+        headers = list(df.columns)
+        year = re.compile(r"^(19|20)\d{2}$")
+        top = True
+        for i in range(len(df)):
+            filled = [
+                j
+                for j in value_cols
+                if df.iat[i, j] is not None and not pd.isna(df.iat[i, j])
+            ]
+            if not filled:
+                continue
+            texts = [str(df.iat[i, j]) for j in filled]
+            if any(self.is_number(df.iat[i, j]) for j in filled) or not all(
+                year.match(t) or not re.search(r"\d", t) for t in texts
+            ):
+                top = False
+                continue
+
+            if top:
+                # continuation of the header, the label stays as a title row
+                for j in filled:
+                    header = headers[j]
+                    text = str(df.iat[i, j])
+                    empty = header is None or pd.isna(header)
+                    headers[j] = text if empty else f"{header} {text}"
+                    df.iat[i, j] = None
+            elif all(year.match(str(df.iat[i, j])) for j in filled):
+                # repeated period header inside the table
+                for j in filled:
+                    df.iat[i, j] = None
+
+        df.columns = headers
+        return df
 
     def _merge_header_values(self, table_df, num_cols):
         table_df = table_df.sort_values(["line", "x0"]).reset_index(drop=True)
@@ -243,7 +296,9 @@ class PageBuilder:
         df.columns = df.iloc[0]
         df = df[1:].reset_index(drop=True)
         df.x0 = df.x0.fillna(0)
-        df.dropna(subset=["Kalem"], inplace=True)
+        df = df.dropna(subset=["Kalem"]).reset_index(drop=True)
+        if df.empty:
+            return None
 
         # row indentations
         xs = df.x0.to_numpy()
@@ -264,6 +319,6 @@ class PageBuilder:
 
         # check data types
         for i in range(1, num_cols):
-            df[df.columns[i]] = df[df.columns[i]].map(self.parse_numeric)
+            df.isetitem(i, df.iloc[:, i].map(self.parse_numeric))
 
-        return df
+        return self._merge_header_rows(df)

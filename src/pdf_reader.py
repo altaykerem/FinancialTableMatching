@@ -6,10 +6,14 @@ import easyocr
 import pandas as pd
 import numpy as np
 
+from src import str_utils
+from src.str_utils import preprocess
+
 
 class PDFReader:
-    def __init__(self, model_dir: str, language: str = "tr"):
+    def __init__(self, model_dir: str, language: str = "tr", gpu: bool = True):
         self.language = language
+        self.gpu = gpu
         self.ocr_dir = "./data/ocr.parquet"
         self.model_dir = model_dir
         self.page_dpi = 300  # (Dots Per Inch), 118 Dots Per CM
@@ -29,8 +33,8 @@ class PDFReader:
         # Read PDF
         doc = pymupdf.open(pdf_path)
         reader = easyocr.Reader(
-            ["tr"],
-            gpu=True,
+            [self.language],
+            gpu=self.gpu,
             model_storage_directory=self.model_dir,
         )
 
@@ -114,6 +118,22 @@ class PDFReader:
         for note, ps, pe in zip(notes, page_starts, page_ends):
             self.note_pages[note] = (ps, pe)
 
+    def read_currency(self, page) -> str:
+        page_df = self.ocr_boxes[self.ocr_boxes["page"] == page]
+        words = preprocess(" ".join(page_df.sort_values(["y0", "x0"])["text"])).split()
+        codes = ["usd", "try", "tl", "eur"]
+
+        # Tüm tutarlar Türk Lirası (TL) olarak gösterilmiştir
+        if "tutarlar" in words:
+            start = words.index("tutarlar")
+            for word in words[start + 1 : start + 8]:
+                if word in codes:
+                    return word.upper()
+
+        counts = {code: words.count(code) for code in codes}
+        code = max(counts, key=counts.get)
+        return code.upper() if counts[code] else None
+
     def read_summary_page(self, page) -> pd.DataFrame:
         assert page > self.contents_page, "Summary should come after contents"
         assert (
@@ -123,12 +143,35 @@ class PDFReader:
         page_df.drop(columns=["page"], inplace=True)
         return page_df
 
+    @staticmethod
+    def _note_heading_y(page_df, note_no):
+        texts = page_df["text"].map(str_utils.ocr_number_correction)
+        heading = texts.str.match(rf"^{note_no}\s*[\.,_]?$", na=False)
+        left_margin = page_df["x0"] < page_df["x0"].min() + 100
+        found = page_df[heading & left_margin]
+        return found["y0"].min() if len(found) else None
+
     def read_referance_pages(self, ref_no) -> List[pd.DataFrame]:
         assert ref_no in self.note_pages, "Referance not found in contents"
         page_start, page_end = self.note_pages[ref_no]
+        note_i = self.notes.index(ref_no)
+        next_no = self.notes[note_i + 1] if note_i + 1 < len(self.notes) else None
+
+        # split page seperated by a title
+        heading_margin = 30
         result = []
         for i in range(page_start, page_end + 1):
             page_df = self.ocr_boxes[self.ocr_boxes["page"] == i].copy()
             page_df.drop(columns=["page"], inplace=True)
+
+            if i == page_start:
+                start_y = self._note_heading_y(page_df, ref_no)
+                if start_y is not None:
+                    page_df = page_df[page_df["y0"] >= start_y - heading_margin]
+            if i == page_end and next_no is not None:
+                end_y = self._note_heading_y(page_df, next_no)
+                if end_y is not None:
+                    page_df = page_df[page_df["y0"] < end_y - heading_margin]
+
             result.append(page_df)
         return result

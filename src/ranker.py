@@ -36,6 +36,6 @@ class CosineRanker:
             normalize_embeddings=True,
         )
 
-        scores = cosine_similarity(embeddings1, embeddings2)
+        scores = cosine_similarity(embeddings1, embeddings2)[0]
         probs = torch.softmax(torch.tensor(scores), dim=-1)
         return probs
