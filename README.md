@@ -20,9 +20,10 @@ https://kap.org.tr/tr/api/file/download/33E83438337C023CE0530A4A622B5826
 python main.py
 ```
 
-The output is written to `output.json`. The first run OCRs the whole PDF (GPU recommended) and caches the result in `data/ocr.parquet`. Later runs reuse the cache; pass `flush=True` in `pdf_to_text_boxes` to redo it. Models are downloaded to `models/`.
+The output is written to `output.json`. 
+For the first run enabling GPU is recommended for a bit faster parsing. The results are cached in file `data/ocr.parquet`. Models are downloaded to `models/` directory.
 
-Settings live in `config.ini`:
+Settings are in `config.ini`:
 
 | Key | Meaning |
 |---|---|
