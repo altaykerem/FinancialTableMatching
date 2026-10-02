@@ -1,0 +1,10 @@
+
+# pip install torch --index-url https://download.pytorch.org/whl/cu130
+# python -m pip install -U sentence-transformers
+numpy==2.5.3
+pandas==3.0.6
+scikit-learn==1.9.1
+PyMuPDF==1.28.2
+easyocr==1.7.2
+openpyxl
+pyarrow
